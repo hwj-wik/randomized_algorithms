@@ -11,33 +11,26 @@ PetscErrorCode update_A(Mat A, Vec q, Vec r)
     const PetscScalar *q_data;
     const PetscScalar *r_data;
 
-    PetscErrorCode ierr = MatGetSize(A, &M, &N);
-    CHKERRQ(ierr);
-    ierr = VecGetSize(q, &q_size);
-    CHKERRQ(ierr);
-    ierr = VecGetSize(r, &r_size);
-    CHKERRQ(ierr);
+    CHKERRQ(MatGetSize(A, &M, &N));
+    CHKERRQ(VecGetSize(q, &q_size));
+    CHKERRQ(VecGetSize(r, &r_size));
 
-    ierr = VecGetArrayRead(q, &q_data);
-    CHKERRQ(ierr);
-    ierr = VecGetArrayRead(r, &r_data);
-    CHKERRQ(ierr);
+    CHKERRQ(VecGetArrayRead(q, &q_data));
+    CHKERRQ(VecGetArrayRead(r, &r_data));
 
     if ((M != q_size) || (N != r_size)) {
         SETERRQ(PETSC_COMM_WORLD, 1, "Dimensions mismatch");
+        return 1;
     }
 
     for (PetscInt i = 0; i < M; i++) {
         for (PetscInt j = 0; j < N; j++) {
-            ierr = MatSetValue(A, i, j, -1 * q_data[i]*r_data[j], ADD_VALUES);
-            CHKERRQ(ierr);
+            CHKERRQ(MatSetValue(A, i, j, -1 * q_data[i]*r_data[j], ADD_VALUES));
         }
     }
 
-    ierr = VecRestoreArrayRead(q, &q_data);
-    CHKERRQ(ierr);
-    ierr = VecRestoreArrayRead(r, &r_data);
-    CHKERRQ(ierr);
+    CHKERRQ(VecRestoreArrayRead(q, &q_data));
+    CHKERRQ(VecRestoreArrayRead(r, &r_data));
 
     return 0;
 }
@@ -49,14 +42,13 @@ PetscErrorCode matrix_append_vector(Mat mat, Vec vec, PetscInt idx, PetscInt *id
     PetscInt M, N;
     PetscInt ncols, nrows;
 
-    PetscErrorCode ierr = VecGetSize(vec, &vec_size);
-    CHKERRQ(ierr);
-    ierr = MatGetSize(mat, &M, &N);
-    CHKERRQ(ierr);
+    CHKERRQ(VecGetSize(vec, &vec_size));
+    CHKERRQ(MatGetSize(mat, &M, &N));
 
     if (type == ROW_APPEND) {
         if (N != vec_size) {
             SETERRQ(PETSC_COMM_WORLD, 1, "Vec size and matrix size does not match");
+            return 1;
         }
 
         for (PetscInt i = 0; i < N; i++) idxn[i] = i;
@@ -66,6 +58,7 @@ PetscErrorCode matrix_append_vector(Mat mat, Vec vec, PetscInt idx, PetscInt *id
     } else {
         if (M != vec_size) {
             SETERRQ(PETSC_COMM_WORLD, 1, "Vec size and matrix size does not match");
+            return 1;
         }
 
         for (PetscInt i = 0; i < M; i++) idxm[i] = i;
@@ -74,12 +67,9 @@ PetscErrorCode matrix_append_vector(Mat mat, Vec vec, PetscInt idx, PetscInt *id
         idxn[0] = idx;
     }
 
-    ierr = VecGetArrayRead(vec, &vals);
-    CHKERRQ(ierr);
-    ierr = MatSetValues(mat, nrows, idxm, ncols, idxn, vals, INSERT_VALUES);
-    CHKERRQ(ierr);
-    ierr = VecRestoreArrayRead(vec, &vals);
-    CHKERRQ(ierr);
+    CHKERRQ(VecGetArrayRead(vec, &vals));
+    CHKERRQ(MatSetValues(mat, nrows, idxm, ncols, idxn, vals, INSERT_VALUES));
+    CHKERRQ(VecRestoreArrayRead(vec, &vals));
 
     return 0;
 }
@@ -92,46 +82,33 @@ PetscErrorCode naive_qr_decomposition(PetscInt M, PetscInt N)
     PetscInt A_m, A_n, cstart, cend, *idxm, *idxn;
     PetscReal *norms;
     PetscRandom rctx;
-    PetscErrorCode ierr;
 
-    ierr = PetscMalloc1(N, &norms);
-    CHKERRQ(ierr);
-    ierr = PetscMalloc2(M, &idxm, N, &idxn);
-    CHKERRQ(ierr);
+    CHKERRQ(PetscMalloc1(N, &norms));
+    CHKERRQ(PetscMalloc2(M, &idxm, N, &idxn));
 
     // create A - mxn matrix
-    ierr = MatCreateDense(PETSC_COMM_WORLD, PETSC_DECIDE, PETSC_DECIDE, M, N, NULL, &A);
-    CHKERRQ(ierr);
+    CHKERRQ(MatCreateDense(PETSC_COMM_WORLD, PETSC_DECIDE, PETSC_DECIDE, M, N, NULL, &A));
 
-    ierr = MatGetOwnershipRange(A, &cstart, &cend);
-    CHKERRQ(ierr);
+    CHKERRQ(MatGetOwnershipRange(A, &cstart, &cend));
 
-    ierr = MatGetLocalSize(A, &A_m, &A_n);
-    CHKERRQ(ierr);
+    CHKERRQ(MatGetLocalSize(A, &A_m, &A_n));
 
     // create Q - mxp
-    ierr = MatCreateDense(PETSC_COMM_WORLD, A_m, PETSC_DECIDE, M, P, NULL, &Q);
-    CHKERRQ(ierr);
+    CHKERRQ(MatCreateDense(PETSC_COMM_WORLD, A_m, PETSC_DECIDE, M, P, NULL, &Q));
     // create R - pxn
-    MatCreateDense(PETSC_COMM_WORLD, PETSC_DECIDE, A_n, P, N, NULL, &R);
-    CHKERRQ(ierr);
+    CHKERRQ(MatCreateDense(PETSC_COMM_WORLD, PETSC_DECIDE, A_n, P, N, NULL, &R));
 
-    ierr = MatCreateVecs(A, &r, &q);
-    CHKERRQ(ierr);
+    CHKERRQ(MatCreateVecs(A, &r, &q));
 
     //set random A with random values
-    ierr = PetscRandomCreate(PETSC_COMM_WORLD, &rctx);
-    CHKERRQ(ierr);
-    ierr = MatSetRandom(A, rctx);
-    CHKERRQ(ierr);
-    ierr = PetscRandomDestroy(&rctx);
-    CHKERRQ(ierr);
+    CHKERRQ(PetscRandomCreate(PETSC_COMM_WORLD, &rctx));
+    CHKERRQ(MatSetRandom(A, rctx));
+    CHKERRQ(PetscRandomDestroy(&rctx));
 
-    ierr = MatAssemblyBegin(A, MAT_FINAL_ASSEMBLY);
-    CHKERRQ(ierr);
-    ierr = MatAssemblyEnd(A, MAT_FINAL_ASSEMBLY);
-    CHKERRQ(ierr);
+    CHKERRQ(MatAssemblyBegin(A, MAT_FINAL_ASSEMBLY));
+    CHKERRQ(MatAssemblyEnd(A, MAT_FINAL_ASSEMBLY));
 
+    //TODO: remove debug
     PetscPrintf(PETSC_COMM_WORLD, "Matrix A, start\n");
     MatView(A, PETSC_VIEWER_STDOUT_WORLD);
 
@@ -139,8 +116,7 @@ PetscErrorCode naive_qr_decomposition(PetscInt M, PetscInt N)
         PetscInt max_index = 0;
         PetscReal max_norm;
 
-        ierr = MatGetColumnNorms(A, NORM_2, norms);
-        CHKERRQ(ierr);
+        CHKERRQ(MatGetColumnNorms(A, NORM_2, norms));
         max_norm = norms[0];
         for (PetscInt c = cstart; c < cend; c++) {
             max_norm = PetscMax(max_norm, norms[i]);
@@ -149,69 +125,57 @@ PetscErrorCode naive_qr_decomposition(PetscInt M, PetscInt N)
             }
         }
 
-        ierr = MatGetColumnVector(A, q, max_index);
-        CHKERRQ(ierr);
-        ierr = VecNormalize(q, NULL);
+        CHKERRQ(MatGetColumnVector(A, q, max_index));
+        CHKERRQ(VecNormalize(q, NULL));
 
+        //TODO: remove debug
         PetscPrintf(PETSC_COMM_WORLD, "Vector q, itertion %d\n", i);
         VecView(q, PETSC_VIEWER_STDOUT_WORLD);
 
-        CHKERRQ(ierr);
-        ierr = MatMultHermitianTranspose(A, q, r);
-        CHKERRQ(ierr);
+        CHKERRQ(MatMultHermitianTranspose(A, q, r));
 
+        //TODO: remove debug
         PetscPrintf(PETSC_COMM_WORLD, "Vector r, itertion %d\n", i);
         VecView(r, PETSC_VIEWER_STDOUT_WORLD);
 
-        matrix_append_vector(Q, q, i, idxm, idxn, COLUMN_APPEND);
-        ierr = MatAssemblyBegin(Q, MAT_FINAL_ASSEMBLY);
-        CHKERRQ(ierr);
-        matrix_append_vector(R, r, i, idxm, idxn, ROW_APPEND);
-        ierr = MatAssemblyBegin(R, MAT_FINAL_ASSEMBLY);
-        CHKERRQ(ierr);
+        CHKERRQ(matrix_append_vector(Q, q, i, idxm, idxn, COLUMN_APPEND));
+        CHKERRQ(MatAssemblyBegin(Q, MAT_FINAL_ASSEMBLY));
 
-        update_A(A, q, r);
-        ierr = MatAssemblyBegin(A, MAT_FINAL_ASSEMBLY);
-        CHKERRQ(ierr);
+        CHKERRQ(matrix_append_vector(R, r, i, idxm, idxn, ROW_APPEND));
+        CHKERRQ(MatAssemblyBegin(R, MAT_FINAL_ASSEMBLY));
 
-        ierr = MatAssemblyEnd(Q, MAT_FINAL_ASSEMBLY);
-        CHKERRQ(ierr);
-        ierr = MatAssemblyEnd(R, MAT_FINAL_ASSEMBLY);
-        CHKERRQ(ierr);
-        ierr = MatAssemblyEnd(A, MAT_FINAL_ASSEMBLY);
-        CHKERRQ(ierr);
+        CHKERRQ(update_A(A, q, r));
+        CHKERRQ(MatAssemblyBegin(A, MAT_FINAL_ASSEMBLY));
 
+        CHKERRQ(MatAssemblyEnd(Q, MAT_FINAL_ASSEMBLY));
+        CHKERRQ(MatAssemblyEnd(R, MAT_FINAL_ASSEMBLY));
+        CHKERRQ(MatAssemblyEnd(A, MAT_FINAL_ASSEMBLY));
+
+        //TODO: remove debug
         MatView(A, PETSC_VIEWER_STDOUT_WORLD);
         MatView(Q, PETSC_VIEWER_STDOUT_WORLD);
         MatView(R, PETSC_VIEWER_STDOUT_WORLD);
+
+        //TODO: show norm in each iteration
     }
 
-    ierr = PetscFree(norms);
-    CHKERRQ(ierr);
+    CHKERRQ(PetscFree(norms));
 
-    ierr = VecDestroy(&q);
-    CHKERRQ(ierr);
-    ierr = VecDestroy(&r);
-    CHKERRQ(ierr);
+    CHKERRQ(VecDestroy(&q));
+    CHKERRQ(VecDestroy(&r));
 
-    ierr = MatDestroy(&A);
-    CHKERRQ(ierr);
-    ierr = MatDestroy(&Q);
-    CHKERRQ(ierr);
-    ierr = MatDestroy(&R);
-    CHKERRQ(ierr);
+    CHKERRQ(MatDestroy(&A));
+    CHKERRQ(MatDestroy(&Q));
+    CHKERRQ(MatDestroy(&R));
 
     return 0;
 }
 
 int main(int argc, char **argv)
 {
-    PetscErrorCode ierr = PetscInitialize(&argc, &argv, NULL, NULL);
-    if (ierr) {
-        return 1;
-    }
+    CHKERRQ(PetscInitialize(&argc, &argv, NULL, NULL));
 
-    naive_qr_decomposition(3, 3);
+    CHKERRQ(naive_qr_decomposition(3, 3));
 
     PetscFinalize();
 }
